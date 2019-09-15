@@ -1,0 +1,37 @@
+{
+  "name": "smashbot",
+  "version": "1.0.0",
+  "description": "Discord bot for managing SSB content",
+  "main": "run.js",
+  "dependencies": {
+    "@discordjs/uws": "^10.149.0",
+    "bufferutil": "^4.0.1",
+    "discord.js": "^11.5.1",
+    "dotenv": "^8.1.0",
+    "libsodium-wrappers": "^0.7.5",
+    "opusscript": "^0.0.6"
+  },
+  "devDependencies": {
+    "nodemon": "^1.19.2"
+  },
+  "scripts": {
+    "test": "nodemon --inspect run.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/T145/smashbot.git"
+  },
+  "keywords": [
+    "super",
+    "smash",
+    "bros",
+    "discord",
+    "bot"
+  ],
+  "author": "T145",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/T145/smashbot/issues"
+  },
+  "homepage": "https://github.com/T145/smashbot#readme"
+}
