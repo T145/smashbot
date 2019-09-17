@@ -16,7 +16,7 @@ function save(query, params) {
       console.error(err.message);
     }
     console.log(' [*] Established database connection.');
-  }).run('CREATE TABLE competitors(name TEXT NOT NULL UNIQUE, perf_rate REAL DEFAULT 10000, global_rank INTEGER DEFAULT NULL, prev_tourn_rank INTEGER DEFAULT NULL, bio TEXT DEFAULT NULL)', (err) => {
+  }).run('CREATE TABLE competitors(name TEXT NOT NULL UNIQUE, bio TEXT DEFAULT n00b, wins INTEGER DEFAULT 0, losses INTEGER DEFAULT 0, perf_rate REAL DEFAULT 10000, global_rank INTEGER DEFAULT NULL, prev_tourn_rank INTEGER DEFAULT NULL)', (err) => {
     if (err) {
       console.log(' [-] Primary table exists; skipping creation.');
       return;
