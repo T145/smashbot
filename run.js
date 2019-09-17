@@ -35,6 +35,51 @@ function save(query, params) {
   });
 }
 
+function elo(name, opponent, won) {
+  // set the wins
+  if (won) {
+    save(`UPDATE competitors SET wins = wins + 1 WHERE name = ${name}`);
+  } else {
+    save(`UPDATE competitors SET losses = losses + 1 WHERE name = ${name}`);
+  }
+
+  // fetch the current elo rank, opponent's elo rank, wins & losses
+  var old_elo, opponent_elo, wins, losses;
+
+  new sql.Database('./db/competition.db', sql.OPEN_READONLY, (err) => {
+    if (err) {
+      console.error(err.message);
+    }
+    console.log(' [*] Established database connection.');
+  }).run(`SELECT name, perf_rate, wins, losses WHERE name = ${name}`, (err, res) => {
+    if (err) {
+      console.error(err.message);
+      return;
+    }
+    old_elo = res[1];
+    wins = res[2];
+    losses = res[3];
+    console.log(' [*] Fetched necessary competitor information.');
+  }).run(`SELECT name, perf_rate WHERE name = ${opponent}`, (err, res) => {
+    if (err) {
+      console.error(err.message);
+      return;
+    }
+    opponent_elo = res[1];
+  }).close((err) => {
+    if (err) {
+      console.error(err.message);
+    }
+    console.log(' [*] Fetched necessary opponent information.');
+  });
+
+  // apply the new elo
+  // https://en.wikipedia.org/wiki/Chess_rating_system
+  var new_elo = old_elo + 16(wins - losses + (0.5 * ((opponent_elo - old_elo) / 200)));
+
+  save(`UPDATE competitors SET perf_rate = ${new_elo} WHERE name = ${name}`);
+}
+
 /**
  * The ready event is vital, it means that only _after_ this will your bot start reacting to information
  * received from Discord
