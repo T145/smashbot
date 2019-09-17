@@ -31,10 +31,7 @@ function save(query, params) {
       console.error(err.message);
     }
     console.log(' [*] Closed database connection.');
-    return true;
   });
-
-  return false;
 }
 
 function elo(name, opponent, won) {
@@ -91,16 +88,13 @@ client.on('ready', () => {
 });
 
 function registerCompetitor(name) {
-  if (save(`SELECT EXISTS(SELECT 1 FROM competitors WHERE name="${name}")`)) {
-    save(`INSERT INTO competitors(name) VALUES(?)`, [`${name}`]);
-  } else {
-    console.log(' [x] User to register has already registered!')
-  }
+  console.log(`Registering competitor: ${name}`)
+  save(`INSERT INTO competitors(name) VALUES(?)`, [`${name}`]);
 }
 
 // Create an event listener for messages
 client.on('message', message => {
-  if (message.channel.type === 'group') {
+  if (!(message.channel.type === 'text')) {
     return;
   }
 
@@ -108,7 +102,10 @@ client.on('message', message => {
 
   if (cmd.startsWith("!!")) {
     cmd = cmd.substring(2);
-    var params = cmd.replace(/\s+/g,' ').trim().split(' ');
+    var params = cmd.replace(/\s+/g, ' ').trim().split(' ');
+    var name = message.member.user.tag;
+
+    console.log(`${name} sent a command: ${cmd}`);
 
     // splice returns the deleted elements, so it needs to not be in the initializer
     params.splice(0, 1);
@@ -120,15 +117,12 @@ client.on('message', message => {
       }
     }
 
-    if (message.channel.type === 'dm') {
-      var name = `${message.author.username}#${message.author.discriminator}`
-      console.log(`${name} sent a DM command: ${cmd}`);
+    if (message.member.roles.some(r => ["Owner"].includes(r.name)) && cmd === 'register') {
+      registerCompetitor(params.join(' '));
+    }
 
-      if (cmd === 'register') {
-        registerCompetitor(name);
-      }
-    } else {
-      console.log(`${message.member.user.tag} sent a command: ${cmd}`);
+    if (cmd === 'bio') {
+      save(`UPDATE competitors SET bio = ${params.join(' ')} WHERE name = ${name}`);
     }
   }
 });
