@@ -103,6 +103,7 @@ client.on('message', message => {
   if (cmd.startsWith("!!")) {
     cmd = cmd.substring(2);
     var params = cmd.replace(/\s+/g, ' ').trim().split(' ');
+    cmd = params[0];
     var name = message.member.user.tag;
 
     console.log(`${name} sent a command: ${cmd}`);
@@ -110,19 +111,14 @@ client.on('message', message => {
     // splice returns the deleted elements, so it needs to not be in the initializer
     params.splice(0, 1);
 
-    for (param in params) {
-      if (!(/^([a-zA-Z0-9 ._-]+)$/.test(param))) {
-        console.error('A param contained an invalid character!');
-        return;
-      }
-    }
-
     if (message.member.roles.some(r => ["Owner"].includes(r.name)) && cmd === 'register') {
       registerCompetitor(params.join(' '));
     }
 
     if (cmd === 'bio') {
-      save(`UPDATE competitors SET bio = ${params.join(' ')} WHERE name = ${name}`);
+      const bio = params.join(' ');
+      save(`UPDATE competitors SET bio = '${bio}' WHERE name = '${name}'`);
+      message.member.guild.channels.find(c => c.name === 'discussion').send(`${name} updated their bio! \n~\n${bio}`)
     }
   }
 });
