@@ -1,4 +1,3 @@
-
 const Discord = require('discord.js');
 const dotenv = require('dotenv');
 const sql = require('sqlite3').verbose();
@@ -26,13 +25,16 @@ function save(query, params) {
       console.error(err.message);
       return;
     }
-    console.log(` [*] Query successful! Created row #${this.lastID}`);
+    console.log(` [*] Query successful!`);
   }).close((err) => {
     if (err) {
       console.error(err.message);
     }
     console.log(' [*] Closed database connection.');
+    return true;
   });
+
+  return false;
 }
 
 function elo(name, opponent, won) {
@@ -75,7 +77,7 @@ function elo(name, opponent, won) {
 
   // apply the new elo
   // https://en.wikipedia.org/wiki/Chess_rating_system
-  var new_elo = old_elo + 16(wins - losses + (0.5 * ((opponent_elo - old_elo) / 200)));
+  var new_elo = old_elo + 16 * (wins - losses + (0.5 * ((opponent_elo - old_elo) / 200)));
 
   save(`UPDATE competitors SET perf_rate = ${new_elo} WHERE name = ${name}`);
 }
@@ -88,34 +90,52 @@ client.on('ready', () => {
   console.log('Online and ready to go!');
 });
 
-function registerCompetitor(member) {
-  const channel = member.guild.channels.find(c => c.name === 'discussion');
-
-  if (!channel) {
-    return;
+function registerCompetitor(name) {
+  if (save(`SELECT EXISTS(SELECT 1 FROM competitors WHERE name="${name}")`)) {
+    save(`INSERT INTO competitors(name) VALUES(?)`, [`${name}`]);
+  } else {
+    console.log(' [x] User to register has already registered!')
   }
-
-  channel.send(`Welcome to the battle, ${member}!\nYou've been registered to the competition brackets!`);
-  save(`INSERT INTO competitors(name) VALUES(?)`, [`${member.user.tag}`]);
 }
 
 // Create an event listener for messages
 client.on('message', message => {
+  if (message.channel.type === 'group') {
+    return;
+  }
+
   var cmd = message.content;
 
-  if (cmd.startsWith("!ssbb ")) {
-    cmd = cmd.split(" ", 2)[1];
-    console.log(`${message.member.user.tag} sent a command: ${cmd}`)
+  if (cmd.startsWith("!!")) {
+    cmd = cmd.substring(2);
+    var params = cmd.replace(/\s+/g,' ').trim().split(' ');
 
-    if (cmd === 'register') {
-      registerCompetitor(message.member);
+    // splice returns the deleted elements, so it needs to not be in the initializer
+    params.splice(0, 1);
+
+    for (param in params) {
+      if (!(/^([a-zA-Z0-9 ._-]+)$/.test(param))) {
+        console.error('A param contained an invalid character!');
+        return;
+      }
+    }
+
+    if (message.channel.type === 'dm') {
+      var name = `${message.author.username}#${message.author.discriminator}`
+      console.log(`${name} sent a DM command: ${cmd}`);
+
+      if (cmd === 'register') {
+        registerCompetitor(name);
+      }
+    } else {
+      console.log(`${message.member.user.tag} sent a command: ${cmd}`);
     }
   }
 });
 
 // Create an event listener for new guild members
 client.on('guildMemberAdd', member => {
-  registerCompetitor(member);
+  registerCompetitor(member.user.tag);
 });
 
 // Log our bot in using the token from https://discordapp.com/developers/applications/me
