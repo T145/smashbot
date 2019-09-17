@@ -8,22 +8,32 @@ dotenv.config();
 // Create an instance of a Discord client
 const client = new Discord.Client();
 
-// Create an instance of the database
-let db = new sql.Database('./db/competition.db', sql.OPEN_READWRITE | sql.OPEN_CREATE, (err) => {
-  if (err) {
-    console.error(err.message);
-  }
-  console.log('Connected to the database!');
-});
+function save(query, params) {
+  console.log(' [ ] Beginning query.');
 
-db.serialize(() => {
-  db.run('CREATE TABLE competitors(name text)', (err) => {
+  new sql.Database('./db/competition.db', sql.OPEN_READWRITE | sql.OPEN_CREATE, (err) => {
     if (err) {
-      console.log("Main table already exists! Skipping creation.");
+      console.error(err.message);
+    }
+    console.log(' [*] Established database connection.');
+  }).run('CREATE TABLE competitors(name TEXT NOT NULL UNIQUE, perf_rate REAL DEFAULT 10000, global_rank INTEGER DEFAULT NULL, prev_tourn_rank INTEGER DEFAULT NULL, bio TEXT DEFAULT NULL)', (err) => {
+    if (err) {
+      console.log(' [-] Primary table exists; skipping creation.');
       return;
     }
+  }).run(query, params, (err) => {
+    if (err) {
+      console.error(err.message);
+      return;
+    }
+    console.log(` [*] Query successful! Created row #${this.lastID}`);
+  }).close((err) => {
+    if (err) {
+      console.error(err.message);
+    }
+    console.log(' [*] Closed database connection.');
   });
-});
+}
 
 /**
  * The ready event is vital, it means that only _after_ this will your bot start reacting to information
@@ -41,22 +51,15 @@ function registerCompetitor(member) {
   }
 
   channel.send(`Welcome to the battle, ${member}!\nYou've been registered to the competition brackets!`);
-
-  db.run(`INSERT INTO competitors(name) VALUES(?)`, [`${member.user.tag}`], function(err) {
-    if (err) {
-      return console.log(err.message);
-    }
-    // get the last insert id
-    console.log(`A row has been inserted with id ${this.lastID}`);
-  });
+  save(`INSERT INTO competitors(name) VALUES(?)`, [`${member.user.tag}`]);
 }
 
 // Create an event listener for messages
 client.on('message', message => {
-  var msg = message.content;
+  var cmd = message.content;
 
-  if (msg.startsWith("!ssbb ")) {
-    var cmd = msg.split(" ", 2)[1];
+  if (cmd.startsWith("!ssbb ")) {
+    cmd = cmd.split(" ", 2)[1];
     console.log(`${message.member.user.tag} sent a command: ${cmd}`)
 
     if (cmd === 'register') {
@@ -72,10 +75,3 @@ client.on('guildMemberAdd', member => {
 
 // Log our bot in using the token from https://discordapp.com/developers/applications/me
 client.login(process.env.CLIENT_ID);
-
-/* db.close((err) => {
-  if (err) {
-    console.error(err.message);
-  }
-  console.log('Closed database connection.');
-}); */
