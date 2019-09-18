@@ -40,7 +40,7 @@ function elo(name, opponent, won) {
   updateStandings(name, opponent, won);
   updateStandings(opponent, name, !won);
 
-  db.all(`SELECT wins, losses, perf_rate FROM competitors WHERE name = '${name}' OR name = '${opponent}'`, (err, res) => {
+  db.all(`SELECT perf_rate FROM competitors WHERE name = '${name}' OR name = '${opponent}'`, (err, res) => {
     if (err) {
       console.log(err.message);
       return;
