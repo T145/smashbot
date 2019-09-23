@@ -13,7 +13,6 @@ let db = new sql.Database('./db/competition.db', sql.OPEN_READWRITE | sql.OPEN_C
 }).run('CREATE TABLE competitors(name TEXT NOT NULL UNIQUE, bio TEXT DEFAULT n00b, wins INTEGER DEFAULT 0, losses INTEGER DEFAULT 0, perf_rate REAL DEFAULT 10000, global_rank INTEGER DEFAULT NULL, prev_tourn_rank INTEGER DEFAULT NULL)', (err) => {
   if (err) {
     console.log(' [!] Primary table exists; skipping creation.');
-    return;
   }
   console.log(' [*] The database is live!');
 });
@@ -36,7 +35,6 @@ function probability(elo, opponent_elo) {
 }
 
 function elo(name, opponent, won) {
-  // ensure both players have their results pre-calculated, so the elo calculation isn't off-balanced by one loss
   updateStandings(name, opponent, won);
   updateStandings(opponent, name, !won);
 
@@ -46,11 +44,9 @@ function elo(name, opponent, won) {
       return;
     }
 
-    var K = 30,
-      pelo = res[0].perf_rate,
-      oelo = res[1].perf_rate;
-    var pa = probability(pelo, oelo);
-    var pb = probability(oelo, pelo);
+    const K = 30;
+    var pelo = res[0].perf_rate, oelo = res[1].perf_rate;
+    var pa = probability(pelo, oelo), pb = probability(oelo, pelo);
 
     if (won) {
       pelo = pelo + K * (1 - pa);
@@ -66,9 +62,7 @@ function elo(name, opponent, won) {
         return;
       }
       console.log(` [*] ${ name }: Elo applied successfully!`);
-    });
-
-    db.run(`UPDATE competitors SET perf_rate = ${ oelo } WHERE name = '${ opponent }'`, (err) => {
+    }).run(`UPDATE competitors SET perf_rate = ${ oelo } WHERE name = '${ opponent }'`, (err) => {
       if (err) {
         console.error(err.message);
         return;
@@ -138,7 +132,18 @@ client.on('message', message => {
         console.log(` [*] Bio update successful!`);
       });
 
-      message.member.guild.channels.find(c => c.name === 'discussion').send(`${name} updated their bio!\n\n${bio}`)
+      message.member.guild.channels.find(c => c.name.startsWith('discussion')).send(`${name} updated their bio!\n\n${bio}`);
+    }
+
+    if (cmd === 'whois') {
+      db.all(`SELECT bio, wins, losses, perf_rate FROM competitors WHERE name = '${params[0]}'`, (err, res) => {
+        if (err) {
+          console.error(err.message);
+          return;
+        }
+        var r = res[0];
+        message.member.guild.channels.find(c => c.name.startsWith('discussion')).send(`✨ ${params[0].split('#')[0]} ✨\n\n__***Bio:***__ ${r.bio}\n__***Wins:***__ ${[r.wins]}\n__***Losses:***__ ${r.losses}\n__***ELO:***__ ${r.perf_rate}`);
+      });
     }
   }
 });
