@@ -10,10 +10,8 @@ let db = new sql.Database('./db/competition.db', sql.OPEN_READWRITE | sql.OPEN_C
     console.error(err.message);
   }
   console.log(' [*] Established database connection.');
-}).run('CREATE TABLE competitors(name TEXT NOT NULL UNIQUE, bio TEXT DEFAULT n00b, wins INTEGER DEFAULT 0, losses INTEGER DEFAULT 0, perf_rate REAL DEFAULT 10000, global_rank INTEGER DEFAULT NULL, prev_tourn_rank INTEGER DEFAULT NULL)', (err) => {
-  if (err) {
-    console.log(' [!] Primary table exists; skipping creation.');
-  }
+}).run('CREATE TABLE competitors(name TEXT NOT NULL UNIQUE, bio TEXT DEFAULT n00b, wins INTEGER DEFAULT 0, losses INTEGER DEFAULT 0, perf_rate REAL DEFAULT 1000, global_rank INTEGER DEFAULT NULL, prev_tourn_rank INTEGER DEFAULT NULL)', (err) => {
+  console.log(err ? ' [!] Primary table exists; skipping creation.' : ' [*] Created the primary table \"competitors\"!');
   console.log(' [*] The database is live!');
 });
 
@@ -21,12 +19,8 @@ let db = new sql.Database('./db/competition.db', sql.OPEN_READWRITE | sql.OPEN_C
 const client = new Discord.Client();
 
 function updateStandings(name, opponent, won) {
-  db.run(`UPDATE competitors SET ${ won ? 'wins = wins + 1' : 'losses = losses + 1' } WHERE name = '${name}'`, (err) => {
-    if (err) {
-      console.error(err.message);
-      return;
-    }
-    console.log(` [*] ${name} ${ won ? 'defeated' : 'lost to'} ${opponent}!`);
+  db.run(`UPDATE competitors SET ${ won ? 'wins = wins + 1' : 'losses = losses + 1' } WHERE name = ?`, [name], (err) => {
+    console.log(err ? err.message : ` [*] ${name} ${ won ? 'defeated' : 'lost to'} ${opponent}!`);
   });
 }
 
@@ -38,7 +32,7 @@ function elo(name, opponent, won) {
   updateStandings(name, opponent, won);
   updateStandings(opponent, name, !won);
 
-  db.all(`SELECT perf_rate FROM competitors WHERE name = '${name}' OR name = '${opponent}'`, (err, res) => {
+  db.all(`SELECT perf_rate FROM competitors WHERE name = ? OR name = ?`, [name, opponent], (err, res) => {
     if (err) {
       console.log(err.message);
       return;
@@ -56,13 +50,13 @@ function elo(name, opponent, won) {
       oelo = oelo + K * (1 - pb);
     }
 
-    db.run(`UPDATE competitors SET perf_rate = ${ pelo } WHERE name = '${ name }'`, (err) => {
+    db.run(`UPDATE competitors SET perf_rate = ? WHERE name = ?`, [pelo, name], (err) => {
       if (err) {
         console.error(err.message);
         return;
       }
       console.log(` [*] ${ name }: Elo applied successfully!`);
-    }).run(`UPDATE competitors SET perf_rate = ${ oelo } WHERE name = '${ opponent }'`, (err) => {
+    }).run(`UPDATE competitors SET perf_rate = ? WHERE name = ?`, [oelo, opponent], (err) => {
       if (err) {
         console.error(err.message);
         return;
@@ -84,11 +78,7 @@ function registerCompetitor(name) {
   console.log(` [ ] Registering competitor: ${name}`);
 
   db.run(`INSERT INTO competitors(name) VALUES(?)`, [name], (err) => {
-    if (err) {
-      console.error(err.message);
-      return;
-    }
-    console.log(` [*] Registration successful!`);
+    console.log(err ? err.message : ` [*] Registration successful!`);
   });
 }
 
@@ -105,6 +95,7 @@ client.on('message', message => {
     var params = cmd.replace(/\s+/g, ' ').trim().split(' ');
     cmd = params[0];
     var name = message.member.user.tag;
+    var channel = message.member.guild.channels.find(c => c.name.startsWith('discussion'));
 
     console.log(`${name} sent a command: ${cmd}`);
 
@@ -115,8 +106,7 @@ client.on('message', message => {
       if (cmd === 'register') {
         registerCompetitor(params.join(' '));
       } else if (cmd === 'elo') {
-        // TODO: Validate these params
-        console.log(params);
+        // TODO: Validate params
         elo(params[0], params[1], params[2]);
       }
     }
@@ -124,25 +114,26 @@ client.on('message', message => {
     if (cmd === 'bio') {
       const bio = params.join(' ');
 
-      db.run(`UPDATE competitors SET bio = '${bio}' WHERE name = '${name}'`, (err) => {
+      db.run(`UPDATE competitors SET bio = ? WHERE name = ?`, [bio, name], (err) => {
         if (err) {
-          console.error(err.message);
-          return;
+          console.log(err.message);
+        } else {
+          console.log(` [*] Bio update successful!`);
         }
-        console.log(` [*] Bio update successful!`);
       });
 
-      message.member.guild.channels.find(c => c.name.startsWith('discussion')).send(`${name} updated their bio!\n\n${bio}`);
+      channel.send(`${name} updated their bio!\n\n${bio}`);
     }
 
     if (cmd === 'whois') {
-      db.all(`SELECT bio, wins, losses, perf_rate FROM competitors WHERE name = '${params[0]}'`, (err, res) => {
+      // TODO: Add support for partial username queries, including no discriminator and nicknames
+      db.all(`SELECT bio, wins, losses, perf_rate FROM competitors WHERE name = ?`, [params[0]], (err, res) => {
         if (err) {
-          console.error(err.message);
-          return;
+          console.log(err.message);
+        } else {
+          var r = res[0];
+          channel.send(`✨ ${params[0].split('#')[0]} ✨\n\n__***Bio:***__ ${r.bio}\n__***Wins:***__ ${[r.wins]}\n__***Losses:***__ ${r.losses}\n__***ELO:***__ ${r.perf_rate}`);
         }
-        var r = res[0];
-        message.member.guild.channels.find(c => c.name.startsWith('discussion')).send(`✨ ${params[0].split('#')[0]} ✨\n\n__***Bio:***__ ${r.bio}\n__***Wins:***__ ${[r.wins]}\n__***Losses:***__ ${r.losses}\n__***ELO:***__ ${r.perf_rate}`);
       });
     }
   }
