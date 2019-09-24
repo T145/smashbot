@@ -1,88 +1,99 @@
-const Discord = require('discord.js');
+const discord = require('discord.js');
 const dotenv = require('dotenv');
-const sql = require('sqlite3').verbose();
+const sqlite = require('sqlite3').verbose();
+
+const client = new discord.Client({
+  messageCacheMaxSize: 20,
+  retryLimit: 14,
+  ws: {
+    large_threshold: 100
+  }
+});
 
 dotenv.config();
 
-// In a production environment, the database is always live
-let db = new sql.Database('./db/competition.db', sql.OPEN_READWRITE | sql.OPEN_CREATE, (err) => {
-  if (err) {
-    console.error(err.message);
-  }
-  console.log(' [*] Established database connection.');
+let connection = new sqlite.Database('./db/competition.db', sqlite.OPEN_READWRITE | sqlite.OPEN_CREATE, (err) => {
+  console.log(err ? ` [!] ERROR: ${err.message}` : ' [?] Establishing database connection..');
 }).run('CREATE TABLE competitors(name TEXT NOT NULL UNIQUE, bio TEXT DEFAULT n00b, wins INTEGER DEFAULT 0, losses INTEGER DEFAULT 0, perf_rate REAL DEFAULT 1000, global_rank INTEGER DEFAULT NULL, prev_tourn_rank INTEGER DEFAULT NULL)', (err) => {
-  console.log(err ? ' [!] Primary table exists; skipping creation.' : ' [*] Created the primary table \"competitors\"!');
-  console.log(' [*] The database is live!');
+  console.log(err ? ' [?] Primary table exists; skipping creation.' : ' [*] Created the primary table \"competitors\"!');
+  console.log(' [*] Connected to the database!');
 });
 
-// Create an instance of a Discord client
-const client = new Discord.Client();
+client.on('ready', () => {
+  console.log(' [*] Discord client is ready!');
 
-function updateStandings(name, opponent, won) {
-  db.run(`UPDATE competitors SET ${ won ? 'wins = wins + 1' : 'losses = losses + 1' } WHERE name = ?`, [name], (err) => {
-    console.log(err ? err.message : ` [*] ${name} ${ won ? 'defeated' : 'lost to'} ${opponent}!`);
+  client.user.setStatus('dnd');
+  client.user.setPresence({
+    game: {
+      name: 'btssmash',
+      type: 'STREAMING',
+      url: 'https://www.twitch.tv/btssmash'
+    }
+  });
+});
+
+function standingUpdate(winner, loser) {
+  connection.run('UPDATE competitors SET wins = wins + 1 WHERE name = ?', [winner], (err) => {
+    console.log(err ? ` [!] ERROR: ${err.message}` : ` [*] ${winner} won! Standings updated.`);
+  });
+  connection.run('UPDATE competitors SET losses = losses + 1 WHERE name = ?', [loser], (err) => {
+    console.log(err ? ` [!] ERROR: ${err.message}` : ` [*] ${loser} lost! Standings updated.`);
   });
 }
 
-function probability(elo, opponent_elo) {
-  return 1.0 * 1.0 / (1 + 1.0 * Math.pow(10, 1.0 * (elo - opponent_elo) / 400));
+function calcEloDiff(pelo, oelo) {
+  return 1.0 * 1.0 / (1 + 1.0 * Math.pow(10, 1.0 * (pelo - oelo) / 400));
 }
 
-function elo(name, opponent, won) {
-  updateStandings(name, opponent, won);
-  updateStandings(opponent, name, !won);
+function calcElo(winner_elo, loser_elo) {
+  const K = 30;
+  var winner_diff = calcEloDiff(winner_elo, loser_elo);
+  var loser_diff = calcEloDiff(loser_elo, winner_elo);
+  return [winner_elo + K * (1 - winner_diff), loser_diff + K * (0 - loser_diff)];
+}
 
-  db.all(`SELECT perf_rate FROM competitors WHERE name = ? OR name = ?`, [name, opponent], (err, res) => {
+function updateElo(winner, loser) {
+  standingUpdate(winner, loser);
+
+  connection.all('SELECT perf_rate FROM competitors WHERE name = ? OR name = ?', [winner, loser], (err, rows) => {
     if (err) {
       console.log(err.message);
       return;
     }
 
-    const K = 30;
-    var pelo = res[0].perf_rate, oelo = res[1].perf_rate;
-    var pa = probability(pelo, oelo), pb = probability(oelo, pelo);
+    var elos = calcElo(rows[0].perf_rate, rows[1].perf_rate);
 
-    if (won) {
-      pelo = pelo + K * (1 - pa);
-      oelo = oelo + K * (0 - pb);
-    } else {
-      pelo = pelo + K * (0 - pa);
-      oelo = oelo + K * (1 - pb);
+    for (var i = 0; i < 2; ++i) {
+      var elo = elos[i];
+      var row = rows[i];
+
+      connection.run('UPDATE competitors SET perf_rate = ? WHERE name = ?', [elo, row.name], (err) => {
+        console.log(err ? ` [!] ERROR: ${err.message}` : ` [*] Applied ELO for ${row.name} successfully!`);
+      });
     }
-
-    db.run(`UPDATE competitors SET perf_rate = ? WHERE name = ?`, [pelo, name], (err) => {
-      if (err) {
-        console.error(err.message);
-        return;
-      }
-      console.log(` [*] ${ name }: Elo applied successfully!`);
-    }).run(`UPDATE competitors SET perf_rate = ? WHERE name = ?`, [oelo, opponent], (err) => {
-      if (err) {
-        console.error(err.message);
-        return;
-      }
-      console.log(` [*] ${ opponent }: Elo applied successfully!`);
-    });
   });
 }
 
-/**
- * The ready event is vital, it means that only _after_ this will your bot start reacting to information
- * received from Discord
- */
-client.on('ready', () => {
-  console.log('Online and ready to go!');
-});
-
 function registerCompetitor(name) {
-  console.log(` [ ] Registering competitor: ${name}`);
+  console.log(` [?] Registering competitor: ${name}`);
 
-  db.run(`INSERT INTO competitors(name) VALUES(?)`, [name], (err) => {
+  connection.run('INSERT INTO competitors(name) VALUES(?)', [name], (err) => {
     console.log(err ? err.message : ` [*] Registration successful!`);
   });
 }
 
-// Create an event listener for messages
+function sendUserInfo(name, channel) {
+  connection.all(`SELECT bio, wins, losses, perf_rate FROM competitors WHERE name = ?`, [name], (err, rows) => {
+    if (err) {
+      console.log(err.message);
+      channel.send(err.message);
+    } else {
+      var row = rows[0];
+      channel.send(`✨ ${name.split('#')[0]} ✨\n\n__***Bio:***__ ${row.bio}\n__***Wins:***__ ${[row.wins]}\n__***Losses:***__ ${row.losses}\n__***ELO:***__ ${row.perf_rate}`);
+    }
+  });
+}
+
 client.on('message', message => {
   if (!(message.channel.type === 'text')) {
     return;
@@ -95,7 +106,7 @@ client.on('message', message => {
     var params = cmd.replace(/\s+/g, ' ').trim().split(' ');
     cmd = params[0];
     var name = message.member.user.tag;
-    var channel = message.member.guild.channels.find(c => c.name.startsWith('discussion'));
+    var channel = message.member.guild.channels.find(c => c.name.startsWith('bot'));
 
     console.log(`${name} sent a command: ${cmd}`);
 
@@ -106,42 +117,31 @@ client.on('message', message => {
       if (cmd === 'register') {
         registerCompetitor(params.join(' '));
       } else if (cmd === 'elo') {
-        // TODO: Validate params
-        elo(params[0], params[1], params[2]);
+        // TODO: Validate names in the params
+        updateElo(params[0], params[1]);
       }
     }
 
     if (cmd === 'bio') {
       const bio = params.join(' ');
 
-      db.run(`UPDATE competitors SET bio = ? WHERE name = ?`, [bio, name], (err) => {
+      connection.run(`UPDATE competitors SET bio = ? WHERE name = ?`, [bio, name], (err) => {
         if (err) {
           console.log(err.message);
         } else {
           console.log(` [*] Bio update successful!`);
         }
       });
-
-      channel.send(`${name} updated their bio!\n\n${bio}`);
+      //channel.send(`${name} updated their bio!\n\n${bio}`);
     }
 
     if (cmd === 'whois') {
       // TODO: Add support for partial username queries, including no discriminator and nicknames
-      db.all(`SELECT bio, wins, losses, perf_rate FROM competitors WHERE name = ?`, [params[0]], (err, res) => {
-        if (err) {
-          console.log(err.message);
-        } else {
-          var r = res[0];
-          channel.send(`✨ ${params[0].split('#')[0]} ✨\n\n__***Bio:***__ ${r.bio}\n__***Wins:***__ ${[r.wins]}\n__***Losses:***__ ${r.losses}\n__***ELO:***__ ${r.perf_rate}`);
-        }
-      });
+      sendUserInfo(params[0], channel);
+    } else if (cmd === 'whoami') {
+      sendUserInfo(name, channel);
     }
   }
-});
-
-// Create an event listener for new guild members
-client.on('guildMemberAdd', member => {
-  registerCompetitor(member.user.tag);
 });
 
 // Log our bot in using the token from https://discordapp.com/developers/applications/me
