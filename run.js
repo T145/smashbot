@@ -2,7 +2,7 @@ const discord = require('discord.js');
 const dotenv = require('dotenv');
 const sqlite = require('sqlite3').verbose();
 
-const client = new discord.Client({
+const bot = new discord.Client({
   messageCacheMaxSize: 20,
   retryLimit: 14,
   ws: {
@@ -19,11 +19,11 @@ let connection = new sqlite.Database('./db/competition.db', sqlite.OPEN_READWRIT
   console.log(' [*] Connected to the database!');
 });
 
-client.on('ready', () => {
-  console.log(' [*] Discord client is ready!');
+bot.on('ready', () => {
+  console.log(' [*] Discord bot is ready!');
 
-  client.user.setStatus('dnd');
-  client.user.setPresence({
+  bot.user.setStatus('dnd');
+  bot.user.setPresence({
     game: {
       name: 'btssmash',
       type: 'STREAMING',
@@ -94,7 +94,7 @@ function sendUserInfo(name, channel) {
   });
 }
 
-client.on('message', message => {
+bot.on('message', message => {
   if (!(message.channel.type === 'text')) {
     return;
   }
@@ -145,4 +145,4 @@ client.on('message', message => {
 });
 
 // Log our bot in using the token from https://discordapp.com/developers/applications/me
-client.login(process.env.CLIENT_ID);
+bot.login(process.env.CLIENT_ID);
